@@ -1,51 +1,73 @@
-# Copyright (c) Streamlit Inc. (2018-2022) Snowflake Inc. (2022)
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
+import openai
 import streamlit as st
-from streamlit.logger import get_logger
+from streamlit_chat import message
 
-LOGGER = get_logger(__name__)
+openai.api_type = "azure"
+openai.api_base = "https://chatgpt-dp-innovation-dev.openai.azure.com/"
+openai.api_version = "2023-07-01-preview"
+openai.api_key = "58d9c01f9ced46f480a5356bbb6d94da"
 
+message_history= []
+prompt = "tu es un assistant RH qui parle français et répond aux questions de RH. Tu dois être fiable et donner des détails. tu connais parfaitement le droit du travail et tu fais des réponses précises en n'hésitant pas a rapeler les articles du droit du travail français"
 
-def run():
-    st.set_page_config(
-        page_title="Hello",
-        page_icon="👋",
+if 'messages' not in st.session_state:
+    st.session_state['messages'] = [
+        {"role": "system", "content": prompt}
+    ]
+if 'generated' not in st.session_state:
+    st.session_state['generated'] = []
+if 'past' not in st.session_state:
+    st.session_state['past'] = []
+
+st.title("Bureau RH")
+
+st.sidebar.title("aide RH")
+model_name = st.sidebar.radio("modèle :", ("GPT-4", "GPT-4 32k"))
+if model_name == "GPT-4":
+    model = "gpt-4"
+else:
+    model = "gpt-4-32k"
+clear_button = st.sidebar.button("Repartir à 0", key="clear")
+
+if clear_button:
+    st.session_state['generated'] = []
+    st.session_state['past'] = []
+    st.session_state['messages'] = [
+        {"role": "system", "content": prompt}
+    ]
+    st.session_state['model_name'] = []
+
+def generate_response(input_text):
+    st.session_state['messages'].append({"role": "user", "content": input_text})
+    response = openai.ChatCompletion.create(
+        engine=model,
+        messages = st.session_state['messages'],
+        temperature=0.7,
+        max_tokens=800,
+        top_p=0.95,
+        frequency_penalty=0,
+        presence_penalty=0,
+        stop=None
     )
+    st.session_state['messages'].append({"role": "assistant", "content": response['choices'][0]['message']['content']})
+    return response['choices'][0]['message']['content']
 
-    st.write("# Welcome to Streamlit! 👋")
+response_container = st.container()
+# container for text box
+container = st.container()
 
-    st.sidebar.success("Select a demo above.")
+with container:
+    with st.form(key='my_form', clear_on_submit=True):
+        user_input = st.text_area("Vos questions :", key='input', height=100)
+        submit_button = st.form_submit_button(label='Envoyer')
 
-    st.markdown(
-        """
-        Streamlit is an open-source app framework built specifically for
-        Machine Learning and Data Science projects.
-        **👈 Select a demo from the sidebar** to see some examples
-        of what Streamlit can do!
-        ### Want to learn more?
-        - Check out [streamlit.io](https://streamlit.io)
-        - Jump into our [documentation](https://docs.streamlit.io)
-        - Ask a question in our [community
-          forums](https://discuss.streamlit.io)
-        ### See more complex demos
-        - Use a neural net to [analyze the Udacity Self-driving Car Image
-          Dataset](https://github.com/streamlit/demo-self-driving)
-        - Explore a [New York City rideshare dataset](https://github.com/streamlit/demo-uber-nyc-pickups)
-    """
-    )
+    if submit_button and user_input:
+        response = generate_response(user_input)
+        st.session_state['past'].append(user_input)
+        st.session_state['generated'].append(response)
 
-
-if __name__ == "__main__":
-    run()
+if st.session_state['generated']:
+    with response_container:
+        for i in range(len(st.session_state['generated'])):
+            message(st.session_state["past"][i], is_user=True, key=str(i) + '_user')
+            message(st.session_state["generated"][i], key=str(i))
